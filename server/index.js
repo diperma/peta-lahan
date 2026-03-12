@@ -10,6 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 const BHUMI_WMS_BASE = 'https://bhumi.atrbpn.go.id/expapi/bhumigeos/umum/wms';
+const PETA_GUDANG_BASE = 'https://peta-gudang.vercel.app/api/map/markers';
 
 // Allow requests from Vite dev server and GitHub Pages
 app.use(cors({
@@ -87,10 +88,62 @@ function proxyWmsRequest(req, res) {
   proxyReq.end();
 }
 
+/**
+ * Proxy a request to Peta Gudang API using Node's https module.
+ */
+function proxyPetaGudangRequest(req, res) {
+  const queryString = new URLSearchParams(req.query).toString();
+  const targetUrl = `${PETA_GUDANG_BASE}?${queryString}`;
+  const url = new URL(targetUrl);
+
+  const options = {
+    hostname: url.hostname,
+    port: 443,
+    path: url.pathname + url.search,
+    method: 'GET',
+    agent: agent,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/json, */*',
+    },
+    timeout: 15000,
+  };
+
+  const proxyReq = https.request(options, (proxyRes) => {
+    res.status(proxyRes.statusCode);
+    if (proxyRes.headers['content-type']) {
+      res.set('Content-Type', proxyRes.headers['content-type']);
+    }
+    proxyRes.pipe(res);
+  });
+
+  proxyReq.on('error', (error) => {
+    if (!res.headersSent) {
+      res.status(502).json({ error: 'Proxy error', detail: error.message });
+    }
+  });
+
+  proxyReq.on('timeout', () => {
+    proxyReq.destroy();
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'Upstream timeout' });
+    }
+  });
+
+  req.on('close', () => {
+    if (!proxyReq.destroyed) {
+      proxyReq.destroy();
+    }
+  });
+
+  proxyReq.end();
+}
+
 // --- Routes ---
 app.get('/api/wms/tiles', proxyWmsRequest);
 app.get('/api/wms/featureinfo', proxyWmsRequest);
 app.get('/api/wms/legend', proxyWmsRequest);
+app.get('/api/peta-gudang/markers', proxyPetaGudangRequest);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

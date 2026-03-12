@@ -3,9 +3,15 @@
  */
 import L from 'leaflet';
 import { LAYERS, getWmsTileUrl, getWmsParams, getFeatureInfo, formatFeatureInfoHtml } from '../services/wms.js';
+import * as PetaGudang from '../services/peta-gudang.js';
+import * as StatisticsPanel from './StatisticsPanel.js';
 
 let map = null;
 let wmsLayers = {};
+let markersLayer = null;
+let overlappingParcelsLayer = null;
+let petaGudangData = [];
+let petaGudangActive = false;
 let activeLayerIds = new Set();
 let gpsMarker = null;
 let gpsCircle = null;
@@ -52,6 +58,17 @@ export function init() {
 
   // Set default basemap
   setBasemap('osm');
+
+  // Markers and Overlapping layers
+  markersLayer = L.layerGroup().addTo(map);
+  overlappingParcelsLayer = L.geoJSON(null, {
+    style: {
+      color: '#fbbf24',
+      weight: 3,
+      fillColor: '#fbbf24',
+      fillOpacity: 0.3,
+    }
+  }).addTo(map);
 
   // Labels overlay for satellite mode
   const labelsLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
@@ -188,6 +205,111 @@ export function zoomToLayer(layerId) {
   );
   map.fitBounds(bounds, { padding: [30, 30] });
 }
+
+/**
+ * Toggle Peta Gudang Markers layer on/off.
+ */
+export async function togglePetaGudang(visible) {
+  petaGudangActive = visible;
+  if (!map) return;
+
+  StatisticsPanel.showToggle(visible);
+
+  if (visible) {
+    if (petaGudangData.length === 0) {
+      showLoading('Mengunduh data Peta Gudang...');
+      try {
+        petaGudangData = await PetaGudang.fetchMarkers();
+        StatisticsPanel.updateStats(petaGudangData);
+      } catch (err) {
+        console.error('Failed to fetch peta-gudang data:', err);
+      } finally {
+        hideLoading();
+      }
+    } else {
+      StatisticsPanel.updateStats(petaGudangData);
+    }
+    renderPetaGudangMarkers();
+    map.on('moveend', renderPetaGudangMarkers);
+  } else {
+    markersLayer.clearLayers();
+    overlappingParcelsLayer.clearLayers();
+    map.off('moveend', renderPetaGudangMarkers);
+  }
+}
+
+/**
+ * Render Peta Gudang markers in the current view.
+ */
+function renderPetaGudangMarkers() {
+  if (!petaGudangActive || !map) return;
+  
+  const bounds = map.getBounds();
+  markersLayer.clearLayers();
+  
+  // Performance: only render what's in view
+  const visibleMarkers = petaGudangData.filter(m => 
+    bounds.contains(L.latLng(parseFloat(m.lat), parseFloat(m.lng)))
+  ).slice(0, 1000); // Limit to 1000 for smooth rendering
+
+  visibleMarkers.forEach(m => {
+    const latlng = [parseFloat(m.lat), parseFloat(m.lng)];
+    const progress = parseFloat(m.percentage_development_progress || 0);
+    
+    // Color based on progress
+    const color = progress === 100 ? '#10b981' : (progress > 0 ? '#3b82f6' : '#94a3b8');
+    
+    L.circleMarker(latlng, {
+      radius: 6,
+      fillColor: color,
+      color: '#fff',
+      weight: 1.5,
+      fillOpacity: 0.8,
+    }).addTo(markersLayer)
+      .bindPopup(`
+        <div class="popup-content">
+          <h3 style="color: ${color};">Marker Peta Gudang</h3>
+          <table class="popup-table">
+            <tr><td class="popup-label">ID</td><td class="popup-value">${m.id}</td></tr>
+            <tr><td class="popup-label">Status</td><td class="popup-value">${m.status}</td></tr>
+            <tr><td class="popup-label">Progres</td><td class="popup-value">${progress}%</td></tr>
+          </table>
+          <button class="check-overlap-btn" onclick="window.checkMarkerOverlap(${m.id}, ${m.lat}, ${m.lng})">
+            🔍 Cek Tumpang Tindih
+          </button>
+        </div>
+      `);
+  });
+}
+
+// Global function for checking overlap from popup
+window.checkMarkerOverlap = async (id, lat, lng) => {
+  if (!map) return;
+  
+  const latlng = L.latLng(lat, lng);
+  let allParcels = [];
+  
+  // Try to find overlap with all active WMS layers
+  for (const layerId of activeLayerIds) {
+    const config = LAYERS[layerId];
+    try {
+      const features = await getFeatureInfo(latlng, config.layerName, map);
+      if (features && features.length > 0) {
+        allParcels.push(...features);
+      }
+    } catch (err) {
+      console.error('Overlap check error:', err);
+    }
+  }
+  
+  if (allParcels.length > 0) {
+    overlappingParcelsLayer.clearLayers();
+    allParcels.forEach(f => overlappingParcelsLayer.addData(f));
+    alert(`Ditemukan ${allParcels.length} bidang tumpang tindih.`);
+  } else {
+    alert('Tidak ditemukan tumpang tindih di lokasi ini.');
+  }
+};
 
 /**
  * Switch basemap.

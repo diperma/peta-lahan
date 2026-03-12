@@ -26,6 +26,7 @@ L.Icon.Default.mergeOptions({
 import * as Header from './components/Header.js';
 import * as MapView from './components/MapView.js';
 import * as LayerPanel from './components/LayerPanel.js';
+import * as StatisticsPanel from './components/StatisticsPanel.js';
 import * as Footer from './components/Footer.js';
 
 /**
@@ -38,6 +39,7 @@ function buildLayout() {
       ${Header.render()}
       ${MapView.render()}
       ${LayerPanel.render()}
+      ${StatisticsPanel.render()}
       ${Footer.render()}
     </div>
   `;
@@ -52,6 +54,7 @@ async function initApp() {
   // Init components
   MapView.init();
   LayerPanel.init();
+  StatisticsPanel.init();
   Footer.updateTimestamp();
 
   // Hide initial loader

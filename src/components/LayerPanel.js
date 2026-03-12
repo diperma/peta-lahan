@@ -50,6 +50,20 @@ export function render() {
           <div class="panel-section">
             <div class="panel-section-title">Layer Data</div>
             ${layerItems}
+            
+            <div class="layer-item" id="layer-item-peta-gudang">
+              <div class="layer-item-header">
+                <div class="layer-color-dot" style="background: #3b82f6;"></div>
+                <span class="layer-name">Peta Gudang Markers</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="layer-toggle-peta-gudang" data-special="peta-gudang" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="layer-description" style="font-size: 0.7rem; color: var(--text-muted); margin-top: 6px;">
+                Marker pembangunan gudang dari API Peta Gudang.
+              </div>
+            </div>
           </div>
 
           <div class="panel-section">
@@ -78,6 +92,15 @@ export function init() {
   document.getElementById('panel-toggle-btn')?.addEventListener('click', togglePanel);
   document.getElementById('panel-close-btn')?.addEventListener('click', closePanel);
   document.getElementById('layer-panel-backdrop')?.addEventListener('click', closePanel);
+
+  // Special toggles
+  document.getElementById('layer-toggle-peta-gudang')?.addEventListener('change', (e) => {
+    const visible = e.target.checked;
+    MapView.togglePetaGudang(visible);
+
+    const item = document.getElementById('layer-item-peta-gudang');
+    if (item) item.classList.toggle('active', visible);
+  });
 
   // Layer toggles
   document.querySelectorAll('.toggle-switch input[data-layer]').forEach(input => {
