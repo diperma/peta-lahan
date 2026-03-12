@@ -52,6 +52,16 @@ export function showToggle(visible) {
   if (btn) btn.classList.toggle('hidden', !visible);
 }
 
+export function showError(message) {
+  const body = document.getElementById('stats-body');
+  if (!body) return;
+  body.innerHTML = `
+    <div class="stats-error">
+      <p>⚠️ ${message}</p>
+    </div>
+  `;
+}
+
 export function updateStats(markers) {
   if (!markers) return;
   

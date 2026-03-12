@@ -18,7 +18,14 @@ export async function fetchMarkers() {
   }
   
   const result = await response.json();
-  if (result.success && result.data) {
+  if (result.success && Array.isArray(result.data)) {
+    // Mutate in place to avoid creating 32k new objects
+    for (let i = 0; i < result.data.length; i++) {
+      const m = result.data[i];
+      m.latNum = parseFloat(m.lat);
+      m.lngNum = parseFloat(m.lng);
+      m.progressNum = parseFloat(m.percentage_development_progress || 0);
+    }
     return result.data;
   }
   return [];
@@ -72,7 +79,7 @@ export function categorizeMarkers(markers) {
   };
 
   markers.forEach(m => {
-    const progress = parseFloat(m.percentage_development_progress || 0);
+    const progress = m.progressNum || 0;
     if (progress === 100) {
       categories.completed++;
     } else if (progress > 0) {

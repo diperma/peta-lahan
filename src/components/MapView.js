@@ -12,6 +12,7 @@ let markersLayer = null;
 let overlappingParcelsLayer = null;
 let petaGudangData = [];
 let petaGudangActive = false;
+let isFetchingPetaGudang = false;
 let activeLayerIds = new Set();
 let gpsMarker = null;
 let gpsCircle = null;
@@ -216,20 +217,27 @@ export async function togglePetaGudang(visible) {
   StatisticsPanel.showToggle(visible);
 
   if (visible) {
-    if (petaGudangData.length === 0) {
+    if (petaGudangData.length === 0 && !isFetchingPetaGudang) {
+      isFetchingPetaGudang = true;
       showLoading('Mengunduh data Peta Gudang...');
       try {
-        petaGudangData = await PetaGudang.fetchMarkers();
-        StatisticsPanel.updateStats(petaGudangData);
+        const data = await PetaGudang.fetchMarkers();
+        petaGudangData = data;
+        if (petaGudangActive) {
+          StatisticsPanel.updateStats(petaGudangData);
+          renderPetaGudangMarkers();
+        }
       } catch (err) {
         console.error('Failed to fetch peta-gudang data:', err);
+        StatisticsPanel.showError('Gagal memuat data statistik.');
       } finally {
+        isFetchingPetaGudang = false;
         hideLoading();
       }
-    } else {
+    } else if (petaGudangData.length > 0) {
       StatisticsPanel.updateStats(petaGudangData);
+      renderPetaGudangMarkers();
     }
-    renderPetaGudangMarkers();
     map.on('moveend', renderPetaGudangMarkers);
   } else {
     markersLayer.clearLayers();
@@ -248,13 +256,20 @@ function renderPetaGudangMarkers() {
   markersLayer.clearLayers();
   
   // Performance: only render what's in view
-  const visibleMarkers = petaGudangData.filter(m => 
-    bounds.contains(L.latLng(parseFloat(m.lat), parseFloat(m.lng)))
-  ).slice(0, 1000); // Limit to 1000 for smooth rendering
+  const visibleMarkers = [];
+  for (let i = 0; i < petaGudangData.length; i++) {
+    const m = petaGudangData[i];
+    // Check bounds using pre-parsed numbers to avoid object creation
+    if (m.latNum >= bounds.getSouth() && m.latNum <= bounds.getNorth() &&
+        m.lngNum >= bounds.getWest() && m.lngNum <= bounds.getEast()) {
+      visibleMarkers.push(m);
+      if (visibleMarkers.length >= 1000) break; // Limit for performance
+    }
+  }
 
   visibleMarkers.forEach(m => {
-    const latlng = [parseFloat(m.lat), parseFloat(m.lng)];
-    const progress = parseFloat(m.percentage_development_progress || 0);
+    const latlng = [m.latNum, m.lngNum];
+    const progress = m.progressNum || 0;
     
     // Color based on progress
     const color = progress === 100 ? '#10b981' : (progress > 0 ? '#3b82f6' : '#94a3b8');
