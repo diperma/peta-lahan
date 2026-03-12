@@ -1,0 +1,313 @@
+/**
+ * MapView Component — Leaflet map with WMS layers, GPS, and feature info.
+ */
+import L from 'leaflet';
+import { LAYERS, getWmsTileUrl, getWmsParams, getFeatureInfo, formatFeatureInfoHtml } from '../services/wms.js';
+
+let map = null;
+let wmsLayers = {};
+let activeLayerIds = new Set();
+let gpsMarker = null;
+let gpsCircle = null;
+let gpsActive = false;
+
+const BASEMAPS = {
+  osm: {
+    name: 'OSM',
+    url: 'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  },
+  satellite: {
+    name: 'Satelit',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri, Maxar, Earthstar Geographics',
+  },
+};
+
+let currentBasemapLayer = null;
+let currentBasemapId = 'osm';
+
+export function render() {
+  return `
+    <div class="map-wrapper">
+      <div id="map"></div>
+      <div class="map-loading-overlay hidden" id="map-loading">
+        <div class="map-loading-content">
+          <div class="spinner"></div>
+          <p id="map-loading-text">Memuat peta...</p>
+        </div>
+      </div>
+      <div class="coord-display" id="coord-display">0.0000, 0.0000</div>
+    </div>
+  `;
+}
+
+export function init() {
+  map = L.map('map', {
+    center: [-2.5, 118.0],
+    zoom: 5,
+    zoomControl: true,
+    attributionControl: true,
+  });
+
+  // Set default basemap
+  setBasemap('osm');
+
+  // Labels overlay for satellite mode
+  const labelsLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+    attribution: '',
+    subdomains: 'abcd',
+    maxZoom: 19,
+    pane: 'overlayPane',
+    opacity: 0,
+  });
+  labelsLayer.addTo(map);
+  // Store for toggle on basemap switch
+  map._labelsLayer = labelsLayer;
+
+  // Create WMS tile layers (hidden by default)
+  for (const [id, config] of Object.entries(LAYERS)) {
+    const wmsUrl = getWmsTileUrl();
+
+    // Use L.TileLayer.WMS with params matching exactly what Bhumi expects
+    const layer = L.tileLayer.wms(wmsUrl, {
+      layers: config.layerName,
+      format: 'image/png',
+      transparent: true,
+      version: '1.3.0',
+      crs: L.CRS.EPSG3857,
+      styles: '',
+      opacity: 0.8,
+      maxZoom: 20,
+      tileSize: 512,
+      // Critical: these extra params match the real Bhumi website requests
+      uppercase: true,
+      TILED: true,
+      SRS: 'EPSG:3857',
+    });
+
+    wmsLayers[id] = layer;
+  }
+
+  // Coordinate display on mouse move
+  map.on('mousemove', (e) => {
+    const el = document.getElementById('coord-display');
+    if (el) {
+      el.textContent = `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`;
+    }
+  });
+
+  // Feature info on click
+  map.on('click', handleMapClick);
+
+  // GPS control
+  initGpsControl();
+
+  // Delayed resize fix
+  setTimeout(() => map.invalidateSize(), 200);
+}
+
+/**
+ * Handle map click — query active WMS layers for feature info.
+ */
+async function handleMapClick(e) {
+  if (activeLayerIds.size === 0) return;
+
+  const popup = L.popup()
+    .setLatLng(e.latlng)
+    .setContent('<div class="popup-loading"><div class="spinner"></div><p>Memuat data...</p></div>')
+    .openOn(map);
+
+  let allHtml = '';
+
+  for (const layerId of activeLayerIds) {
+    const config = LAYERS[layerId];
+    try {
+      const features = await getFeatureInfo(e.latlng, config.layerName, map);
+      const html = formatFeatureInfoHtml(features, config);
+      allHtml += html;
+    } catch (err) {
+      console.error(`FeatureInfo error for ${layerId}:`, err);
+    }
+  }
+
+  if (allHtml) {
+    popup.setContent(allHtml);
+  } else {
+    popup.setContent('<div class="popup-content"><p style="text-align:center;color:var(--text-muted);padding:8px;">Tidak ada data di lokasi ini.</p></div>');
+  }
+}
+
+/**
+ * Toggle a WMS layer on/off.
+ */
+export function toggleLayer(layerId, visible) {
+  const layer = wmsLayers[layerId];
+  if (!layer || !map) return;
+
+  if (visible) {
+    layer.addTo(map);
+    activeLayerIds.add(layerId);
+
+    // Auto-zoom to appropriate level if current zoom is too low
+    const config = LAYERS[layerId];
+    const minZoom = config.minZoom || 5;
+    if (map.getZoom() < minZoom) {
+      zoomToLayer(layerId);
+      // Set zoom to the minimum needed to see data
+      setTimeout(() => {
+        if (map.getZoom() < minZoom) {
+          map.setZoom(minZoom);
+        }
+      }, 500);
+    }
+  } else {
+    map.removeLayer(layer);
+    activeLayerIds.delete(layerId);
+  }
+}
+
+/**
+ * Set opacity for a WMS layer.
+ */
+export function setLayerOpacity(layerId, opacity) {
+  const layer = wmsLayers[layerId];
+  if (layer) layer.setOpacity(opacity);
+}
+
+/**
+ * Zoom to the extent of a layer.
+ */
+export function zoomToLayer(layerId) {
+  const config = LAYERS[layerId];
+  if (!config || !map) return;
+
+  const bounds = L.latLngBounds(
+    L.latLng(config.bounds.sw[1], config.bounds.sw[0]),
+    L.latLng(config.bounds.ne[1], config.bounds.ne[0])
+  );
+  map.fitBounds(bounds, { padding: [30, 30] });
+}
+
+/**
+ * Switch basemap.
+ */
+export function setBasemap(basemapId) {
+  const config = BASEMAPS[basemapId];
+  if (!config || !map) return;
+
+  if (currentBasemapLayer) {
+    map.removeLayer(currentBasemapLayer);
+  }
+
+  currentBasemapLayer = L.tileLayer(config.url, {
+    attribution: config.attribution,
+    maxZoom: 19,
+  });
+  currentBasemapLayer.addTo(map);
+  currentBasemapId = basemapId;
+
+  // Show labels on satellite, hide on OSM
+  if (map._labelsLayer) {
+    map._labelsLayer.setOpacity(basemapId === 'satellite' ? 1 : 0);
+  }
+}
+
+export function getCurrentBasemap() {
+  return currentBasemapId;
+}
+
+export function isLayerActive(layerId) {
+  return activeLayerIds.has(layerId);
+}
+
+/* =====================
+   GPS Control
+   ===================== */
+
+function initGpsControl() {
+  const GpsControl = L.Control.extend({
+    options: { position: 'bottomright' },
+    onAdd() {
+      const container = L.DomUtil.create('div', 'gps-control');
+      container.id = 'gps-btn';
+      container.title = 'Temukan lokasi saya';
+      container.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
+             fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <line x1="12" y1="2" x2="12" y2="6"></line>
+          <line x1="12" y1="18" x2="12" y2="22"></line>
+          <line x1="2" y1="12" x2="6" y2="12"></line>
+          <line x1="18" y1="12" x2="22" y2="12"></line>
+        </svg>`;
+      L.DomEvent.disableClickPropagation(container);
+      container.addEventListener('click', handleGpsClick);
+      return container;
+    },
+  });
+
+  map.addControl(new GpsControl());
+  map.on('locationfound', onLocationFound);
+  map.on('locationerror', onLocationError);
+}
+
+function handleGpsClick() {
+  const btn = document.getElementById('gps-btn');
+
+  if (gpsActive) {
+    if (gpsMarker) { map.removeLayer(gpsMarker); gpsMarker = null; }
+    if (gpsCircle) { map.removeLayer(gpsCircle); gpsCircle = null; }
+    gpsActive = false;
+    btn.classList.remove('active', 'locating');
+    return;
+  }
+
+  btn.classList.add('locating');
+  map.locate({ setView: true, maxZoom: 16, enableHighAccuracy: true });
+}
+
+function onLocationFound(e) {
+  const btn = document.getElementById('gps-btn');
+  btn.classList.remove('locating');
+  btn.classList.add('active');
+  gpsActive = true;
+
+  const radius = e.accuracy / 2;
+
+  if (gpsMarker) map.removeLayer(gpsMarker);
+  if (gpsCircle) map.removeLayer(gpsCircle);
+
+  const gpsIcon = L.divIcon({
+    html: '<div class="gps-marker"><div class="gps-marker-pulse"></div><div class="gps-marker-dot"></div></div>',
+    className: '',
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  });
+
+  gpsMarker = L.marker(e.latlng, { icon: gpsIcon, zIndexOffset: 1000 })
+    .addTo(map)
+    .bindPopup(`<div style="text-align:center;padding:4px;"><strong>Lokasi Anda</strong><br><span style="font-size:11px;color:var(--text-muted);">Akurasi: ±${Math.round(radius)} m</span></div>`);
+
+  gpsCircle = L.circle(e.latlng, {
+    radius, color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.1, weight: 1,
+  }).addTo(map);
+}
+
+function onLocationError(e) {
+  const btn = document.getElementById('gps-btn');
+  btn.classList.remove('locating');
+  alert('Gagal mendapatkan lokasi: ' + e.message);
+}
+
+export function showLoading(text) {
+  const el = document.getElementById('map-loading');
+  const textEl = document.getElementById('map-loading-text');
+  if (el) el.classList.remove('hidden');
+  if (textEl) textEl.textContent = text || 'Memuat peta...';
+}
+
+export function hideLoading() {
+  const el = document.getElementById('map-loading');
+  if (el) el.classList.add('hidden');
+}
