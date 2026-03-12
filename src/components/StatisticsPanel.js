@@ -62,6 +62,14 @@ export function showError(message) {
   `;
 }
 
+export function setLoading(loading) {
+  const body = document.getElementById('stats-body');
+  if (!body) return;
+  if (loading) {
+    body.innerHTML = '<div class="stats-placeholder"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px;"></div>Mengunduh data statistik...</div>';
+  }
+}
+
 export function updateStats(markers) {
   if (!markers) return;
   
@@ -97,5 +105,6 @@ export function updateStats(markers) {
     <div class="stats-info">
       <p>⚠️ Data tumpang tindih dengan lahan pertanian hanya dapat dihitung secara manual per lokasi melalui marker di peta.</p>
     </div>
+
   `;
 }

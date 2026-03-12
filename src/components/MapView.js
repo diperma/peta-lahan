@@ -219,7 +219,7 @@ export async function togglePetaGudang(visible) {
   if (visible) {
     if (petaGudangData.length === 0 && !isFetchingPetaGudang) {
       isFetchingPetaGudang = true;
-      showLoading('Mengunduh data Peta Gudang...');
+      StatisticsPanel.setLoading(true);
       try {
         const data = await PetaGudang.fetchMarkers();
         petaGudangData = data;
@@ -232,7 +232,6 @@ export async function togglePetaGudang(visible) {
         StatisticsPanel.showError('Gagal memuat data statistik.');
       } finally {
         isFetchingPetaGudang = false;
-        hideLoading();
       }
     } else if (petaGudangData.length > 0) {
       StatisticsPanel.updateStats(petaGudangData);
