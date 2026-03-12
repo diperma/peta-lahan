@@ -22,8 +22,5 @@
 - [ ] Task: Ensure the statistics update dynamically as markers are fetched or filtered.
 - [ ] Task: Conductor - User Manual Verification 'Phase 4: Statistics UI' (Protocol in workflow.md)
 
-## Phase 5: Refinement & Testing
-- [ ] Task: Optimize the point-in-polygon analysis for performance with up to 1000 markers.
-- [ ] Task: Conduct manual testing to verify all functional requirements and acceptance criteria are met.
-- [ ] Task: Final code review and cleanup of any redundant code or debug logs.
-- [ ] Task: Conductor - User Manual Verification 'Phase 5: Refinement & Testing' (Protocol in workflow.md)
+## Phase 6: Review Fixes
+- [x] Task: Optimize marker rendering and fix stats hang 25f5b57
