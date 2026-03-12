@@ -37,9 +37,9 @@ function buildLayout() {
   app.innerHTML = `
     <div class="app-layout">
       ${Header.render()}
+      ${StatisticsPanel.render()}
       ${MapView.render()}
       ${LayerPanel.render()}
-      ${StatisticsPanel.render()}
       ${Footer.render()}
     </div>
   `;

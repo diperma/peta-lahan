@@ -85,40 +85,72 @@ export function getWmsParams(layerName) {
  * @returns {Promise<Object[]>} Array of feature objects
  */
 export async function getFeatureInfo(latlng, layerName, map) {
-  const size = map.getSize();
-  const bounds = map.getBounds();
-  const sw = map.options.crs.project(bounds.getSouthWest());
-  const ne = map.options.crs.project(bounds.getNorthEast());
+  // Use a small 2x2 image request to check for colored pixels (overlaps)
+  const WIDTH = 2;
+  const HEIGHT = 2;
 
-  const bbox = `${sw.x},${sw.y},${ne.x},${ne.y}`;
-  const point = map.latLngToContainerPoint(latlng);
+  // Project point to EPSG:3857
+  const point = map.options.crs.project(latlng);
+  
+  // Create a BBOX around the point (10 meter buffer for "near" detection)
+  const buffer = 10.0; 
+  const bbox = `${point.x - buffer},${point.y - buffer},${point.x + buffer},${point.y + buffer}`;
 
   const params = new URLSearchParams({
     VERSION: '1.3.0',
-    REQUEST: 'GetFeatureInfo',
-    SERVICE: 'WMS',
+    REQUEST: 'GetMap', // Changed from GetFeatureInfo to GetMap
     LAYERS: layerName,
-    QUERY_LAYERS: layerName,
-    INFO_FORMAT: 'application/json',
-    FEATURE_COUNT: '5',
+    FORMAT: 'image/png',
+    TRANSPARENT: 'true',
     SRS: 'EPSG:3857',
     CRS: 'EPSG:3857',
-    WIDTH: size.x.toString(),
-    HEIGHT: size.y.toString(),
+    WIDTH: WIDTH.toString(),
+    HEIGHT: HEIGHT.toString(),
     BBOX: bbox,
-    I: Math.round(point.x).toString(),
-    J: Math.round(point.y).toString(),
   });
 
-  const url = `${BACKEND_URL}/api/wms/featureinfo?${params}`;
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error(`FeatureInfo HTTP ${response.status}`);
+  const url = `${BACKEND_URL}/api/wms/tiles?${params}`;
+  
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    
+    // Parse the image blob
+    const blob = await response.blob();
+    const imageBitmap = await createImageBitmap(blob);
+    
+    // Draw to an offscreen canvas to check pixels
+    const canvas = document.createElement('canvas');
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(imageBitmap, 0, 0);
+    
+    // Check if any pixel is NOT fully transparent
+    const imageData = ctx.getImageData(0, 0, WIDTH, HEIGHT).data;
+    let hasColor = false;
+    for (let i = 3; i < imageData.length; i += 4) {
+      if (imageData[i] > 0) {
+        hasColor = true;
+        break;
+      }
+    }
+    
+    // If color was found, it's an overlap! Return a mock feature since we don't get JSON properties.
+    if (hasColor) {
+      return [{
+        properties: {
+          _visualOverlap: true,
+          status: 'Terdeteksi (Visual 10m)'
+        }
+      }];
+    }
+    
+    return [];
+  } catch (err) {
+    console.warn(`Visual check failed for ${layerName}:`, err);
+    return [];
   }
-
-  const data = await response.json();
-  return data.features || [];
 }
 
 /**

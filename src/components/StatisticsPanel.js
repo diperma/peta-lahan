@@ -8,103 +8,88 @@ let stats = null;
 
 export function render() {
   return `
-    <div class="stats-panel-overlay hidden" id="stats-panel-overlay">
-      <div class="stats-panel">
-        <div class="stats-header">
-          <h3>Statistik Peta Gudang</h3>
-          <button class="stats-close-btn" id="stats-close-btn">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
-                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-        <div class="stats-body" id="stats-body">
-          <div class="stats-placeholder">Memuat data statistik...</div>
-        </div>
+    <div class="stats-bar hidden" id="stats-bar">
+      <div class="stats-bar-content" id="stats-bar-content">
+        <div class="stats-placeholder">Memuat statistik peta...</div>
       </div>
     </div>
-    
-    <button class="stats-toggle-btn hidden" id="stats-toggle-btn" title="Lihat Statistik">
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24"
-           fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="18" y1="20" x2="18" y2="10"></line>
-        <line x1="12" y1="20" x2="12" y2="4"></line>
-        <line x1="6" y1="20" x2="6" y2="14"></line>
-      </svg>
-    </button>
   `;
 }
 
 export function init() {
-  document.getElementById('stats-toggle-btn')?.addEventListener('click', () => {
-    document.getElementById('stats-panel-overlay')?.classList.toggle('hidden');
-  });
-  
-  document.getElementById('stats-close-btn')?.addEventListener('click', () => {
-    document.getElementById('stats-panel-overlay')?.classList.add('hidden');
-  });
+  // No explicit toggle buttons needed anymore as it's a sticky bar
 }
 
 export function showToggle(visible) {
-  const btn = document.getElementById('stats-toggle-btn');
-  if (btn) btn.classList.toggle('hidden', !visible);
+  const bar = document.getElementById('stats-bar');
+  if (bar) bar.classList.toggle('hidden', !visible);
 }
 
 export function showError(message) {
-  const body = document.getElementById('stats-body');
-  if (!body) return;
-  body.innerHTML = `
-    <div class="stats-error">
-      <p>⚠️ ${message}</p>
-    </div>
+  const content = document.getElementById('stats-bar-content');
+  if (!content) return;
+  content.innerHTML = `
+    <div class="stats-error">⚠️ ${message}</div>
   `;
 }
 
 export function setLoading(loading) {
-  const body = document.getElementById('stats-body');
-  if (!body) return;
+  const content = document.getElementById('stats-bar-content');
+  const btn = document.getElementById('stats-toggle-btn');
+  if (!content) return;
+  
   if (loading) {
-    body.innerHTML = '<div class="stats-placeholder"><div class="spinner" style="width:20px;height:20px;margin:0 auto 10px;"></div>Mengunduh data statistik...</div>';
+    btn?.classList.add('loading-pulse');
+    content.innerHTML = `
+      <div class="stats-loading">
+        <div class="spinner-sm"></div>
+        <span>Memproses data statistik (${PetaGudang.BACKEND_URL ? 'Remote' : 'Local'})...</span>
+      </div>
+    `;
+  } else {
+    btn?.classList.remove('loading-pulse');
   }
 }
 
-export function updateStats(markers) {
+export function updateStats(markers, overlapCount = null) {
   if (!markers) return;
   
   const categories = PetaGudang.categorizeMarkers(markers);
-  const body = document.getElementById('stats-body');
-  if (!body) return;
+  const content = document.getElementById('stats-bar-content');
+  if (!content) return;
 
-  body.innerHTML = `
-    <div class="stats-summary">
-      <div class="stat-card">
-        <div class="stat-value">${categories.total.toLocaleString()}</div>
-        <div class="stat-label">Total Marker</div>
+  // Render horizontal stats
+  content.innerHTML = `
+    <div class="stats-group">
+      <div class="stats-item">
+        <span class="stats-label">Total Marker:</span>
+        <span class="stats-value">${categories.total.toLocaleString()}</span>
       </div>
-      <div class="stat-card highlight">
-        <div class="stat-value">${categories.completed.toLocaleString()}</div>
-        <div class="stat-label">Selesai (100%)</div>
+      <div class="stats-divider"></div>
+      <div class="stats-item">
+        <span class="stats-label">Selesai (100%):</span>
+        <span class="stats-value highlight">${categories.completed.toLocaleString()}</span>
       </div>
-    </div>
-    
-    <div class="stats-section-title">Progres Pembangunan</div>
-    <div class="progress-list">
-      ${Object.entries(categories.byProgress).sort((a,b) => parseInt(a[0]) - parseInt(b[0])).map(([key, count]) => `
-        <div class="progress-row">
-          <span class="progress-label">${key}</span>
-          <div class="progress-bar-container">
-            <div class="progress-bar" style="width: ${(count / categories.total * 100).toFixed(1)}%;"></div>
-          </div>
-          <span class="progress-count">${count.toLocaleString()}</span>
+      <div class="stats-divider"></div>
+      <div class="stats-item progress-item">
+        <span class="stats-label">Progres:</span>
+        <div class="stats-mini-chart">
+          ${Object.entries(categories.byProgress)
+            .sort((a,b) => parseInt(a[0]) - parseInt(b[0]))
+            .map(([key, count]) => {
+              const pct = (count / categories.total * 100).toFixed(1);
+              return `<div class="stats-mini-bar" style="width: ${pct}%;" title="${key}: ${count.toLocaleString()} (${pct}%)"></div>`;
+            }).join('')}
         </div>
-      `).join('')}
+      </div>
+      <div class="stats-divider"></div>
+      <div class="stats-item overlap-item">
+        <span class="stats-label">Tumpang Tindih (View):</span>
+        <span class="stats-value highlight-warn" id="overlap-count">${overlapCount !== null ? overlapCount : '-'}</span>
+        <button class="stats-scan-btn" onclick="window.scanOverlapsInView()" title="Scan tumpang tindih lahan sawah di area ini">
+          🔍 Scan Area
+        </button>
+      </div>
     </div>
-
-    <div class="stats-info">
-      <p>⚠️ Data tumpang tindih dengan lahan pertanian hanya dapat dihitung secara manual per lokasi melalui marker di peta.</p>
-    </div>
-
   `;
 }

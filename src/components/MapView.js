@@ -55,6 +55,7 @@ export function init() {
     zoom: 5,
     zoomControl: true,
     attributionControl: true,
+    preferCanvas: true,
   });
 
   // Set default basemap
@@ -232,6 +233,7 @@ export async function togglePetaGudang(visible) {
         StatisticsPanel.showError('Gagal memuat data statistik.');
       } finally {
         isFetchingPetaGudang = false;
+        StatisticsPanel.setLoading(false);
       }
     } else if (petaGudangData.length > 0) {
       StatisticsPanel.updateStats(petaGudangData);
@@ -435,6 +437,76 @@ function onLocationError(e) {
   btn.classList.remove('locating');
   alert('Gagal mendapatkan lokasi: ' + e.message);
 }
+
+// Global function for background scanning of overlaps in view
+window.scanOverlapsInView = async () => {
+  if (isFetchingPetaGudang || !map) return;
+  
+  const bounds = map.getBounds();
+  const visibleMarkers = [];
+  for (let i = 0; i < petaGudangData.length; i++) {
+    const m = petaGudangData[i];
+    if (m.latNum >= bounds.getSouth() && m.latNum <= bounds.getNorth() &&
+        m.lngNum >= bounds.getWest() && m.lngNum <= bounds.getEast()) {
+      visibleMarkers.push(m);
+    }
+  }
+
+  if (visibleMarkers.length === 0) {
+    alert('Tidak ada marker di area ini untuk di-scan.');
+    return;
+  }
+
+  const toScan = visibleMarkers;
+  
+  const scanBtn = document.querySelector('.stats-scan-btn');
+  if (scanBtn) {
+    scanBtn.disabled = true;
+    scanBtn.textContent = 'Scanning...';
+  }
+
+  let overlapCount = 0;
+  const activeWmsIds = Array.from(activeLayerIds);
+  
+  // Progress tracking
+  let processed = 0;
+  const countEl = document.getElementById('overlap-count');
+
+  // Process in parallel chunks to be efficient
+  const CHUNK_SIZE = 15;
+  for (let i = 0; i < toScan.length; i += CHUNK_SIZE) {
+    const chunk = toScan.slice(i, i + CHUNK_SIZE);
+    
+    await Promise.all(chunk.map(async (m) => {
+      const latlng = L.latLng(m.latNum, m.lngNum);
+      let found = false;
+      
+      for (const layerId of activeWmsIds) {
+        try {
+          // Use specific layer name for better targeting
+          const features = await getFeatureInfo(latlng, LAYERS[layerId].layerName, map);
+          if (features && features.length > 0) {
+            found = true;
+            break; 
+          }
+        } catch (e) { /* ignore */ }
+      }
+      
+      if (found) overlapCount++;
+      processed++;
+      if (countEl) countEl.textContent = `${overlapCount} found (${processed}/${toScan.length})`;
+    }));
+  }
+
+  StatisticsPanel.updateStats(petaGudangData, overlapCount);
+  
+  if (scanBtn) {
+    scanBtn.disabled = false;
+    scanBtn.textContent = '🔍 Scan Area';
+  }
+  
+  alert(`Scan selesai. Ditemukan ${overlapCount} dari ${toScan.length} marker tumpang tindih.`);
+};
 
 export function showLoading(text) {
   const el = document.getElementById('map-loading');

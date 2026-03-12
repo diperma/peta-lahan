@@ -65,22 +65,23 @@ function proxyWmsRequest(req, res) {
     proxyRes.pipe(res);
   });
 
+  // Set a hard timeout for the proxy request (30 seconds)
+  proxyReq.setTimeout(30000, () => {
+    proxyReq.destroy();
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'Upstream timeout', detail: 'Bhumi server took too long to respond.' });
+    }
+  });
+
   proxyReq.on('error', (error) => {
     if (!res.headersSent) {
       res.status(502).json({ error: 'Proxy error', detail: error.message });
     }
   });
 
-  proxyReq.on('timeout', () => {
-    proxyReq.destroy();
-    if (!res.headersSent) {
-      res.status(504).json({ error: 'Upstream timeout' });
-    }
-  });
-
   // CRITICAL: Abort the upstream request if the browser cancels (e.g. user pans/zooms away)
   req.on('close', () => {
-    if (!proxyReq.destroyed) {
+    if (!res.writableEnded && !proxyReq.destroyed) {
       proxyReq.destroy();
     }
   });
@@ -117,6 +118,14 @@ function proxyPetaGudangRequest(req, res) {
     proxyRes.pipe(res);
   });
 
+  // Set a longer timeout for the markers data (60 seconds) as it is a large JSON
+  proxyReq.setTimeout(60000, () => {
+    proxyReq.destroy();
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'Upstream timeout', detail: 'Peta Gudang API took too long to respond.' });
+    }
+  });
+
   proxyReq.on('error', (error) => {
     if (!res.headersSent) {
       res.status(502).json({ error: 'Proxy error', detail: error.message });
@@ -131,7 +140,7 @@ function proxyPetaGudangRequest(req, res) {
   });
 
   req.on('close', () => {
-    if (!proxyReq.destroyed) {
+    if (!res.writableEnded && !proxyReq.destroyed) {
       proxyReq.destroy();
     }
   });

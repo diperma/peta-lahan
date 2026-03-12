@@ -11,24 +11,40 @@ const BACKEND_URL = IS_DEV ? '' : (import.meta.env.VITE_API_URL || '');
  */
 export async function fetchMarkers() {
   const url = `${BACKEND_URL}/api/peta-gudang/markers`;
-  const response = await fetch(url);
   
-  if (!response.ok) {
-    throw new Error(`Peta Gudang HTTP ${response.status}`);
-  }
-  
-  const result = await response.json();
-  if (result.success && Array.isArray(result.data)) {
-    // Mutate in place to avoid creating 32k new objects
-    for (let i = 0; i < result.data.length; i++) {
-      const m = result.data[i];
-      m.latNum = parseFloat(m.lat);
-      m.lngNum = parseFloat(m.lng);
-      m.progressNum = parseFloat(m.percentage_development_progress || 0);
+  // 30s timeout for large payload
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      throw new Error(`Peta Gudang HTTP ${response.status}`);
     }
-    return result.data;
+    
+    const result = await response.json();
+    if (result.success && Array.isArray(result.data)) {
+      const data = result.data;
+      const len = data.length;
+      
+      // Fast path parsing — avoids creating 30k intermediate objects
+      for (let i = 0; i < len; i++) {
+        const m = data[i];
+        m.latNum = Number(m.lat);   // Number() is faster than parseFloat for simple strings
+        m.lngNum = Number(m.lng);
+        m.progressNum = Number(m.percentage_development_progress) || 0;
+      }
+      return data;
+    }
+    return [];
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Permintaan data statistik melebihi batas waktu (timeout).');
+    }
+    throw err;
   }
-  return [];
 }
 
 /**

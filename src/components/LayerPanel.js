@@ -104,6 +104,12 @@ export function init() {
 
   // Layer toggles
   document.querySelectorAll('.toggle-switch input[data-layer]').forEach(input => {
+    // Set default ON
+    input.checked = true;
+    const layerId = input.dataset.layer;
+    MapView.toggleLayer(layerId, true);
+    document.getElementById(`layer-item-${layerId}`)?.classList.add('active');
+
     input.addEventListener('change', (e) => {
       const layerId = e.target.dataset.layer;
       const visible = e.target.checked;
@@ -116,6 +122,16 @@ export function init() {
       updateLegends();
     });
   });
+
+  // Special toggle default ON
+  const pgToggle = document.getElementById('layer-toggle-peta-gudang');
+  if (pgToggle) {
+    pgToggle.checked = true;
+    MapView.togglePetaGudang(true);
+    document.getElementById('layer-item-peta-gudang')?.classList.add('active');
+  }
+
+  updateLegends();
 
   // Opacity sliders
   document.querySelectorAll('.opacity-slider[data-layer]').forEach(slider => {
