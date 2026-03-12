@@ -24,3 +24,4 @@
 
 ## Phase 6: Review Fixes
 - [x] Task: Optimize marker rendering and fix stats hang 25f5b57
+- [x] Task: Fix UI blocking during fetch and syntax errors
