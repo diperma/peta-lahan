@@ -7,7 +7,7 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "node api/index.js",
     "dev:frontend": "vite",
-    "build": "cross-env VITE_API_URL=https://bhumi-scraper.vercel.app vite build",
+    "build": "cross-env VITE_API_URL=https://peta-lahan.vercel.app vite build",
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
