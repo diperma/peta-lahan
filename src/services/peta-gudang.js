@@ -3,7 +3,7 @@
  */
 
 const IS_DEV = import.meta.env.DEV;
-const BACKEND_URL = IS_DEV ? '' : (import.meta.env.VITE_API_URL || '');
+export const BACKEND_URL = IS_DEV ? '' : (import.meta.env.VITE_API_URL || '');
 
 /**
  * Fetch all markers from Peta Gudang via the proxy.
