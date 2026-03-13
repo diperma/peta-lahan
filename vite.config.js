@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/',
+  base: '/bhumi-scraper/',
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
