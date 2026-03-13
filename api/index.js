@@ -12,11 +12,12 @@ const PORT = process.env.PORT || 3001;
 const BHUMI_WMS_BASE = 'https://bhumi.atrbpn.go.id/expapi/bhumigeos/umum/wms';
 const PETA_GUDANG_BASE = 'https://peta-gudang.vercel.app/api/map/markers';
 
-// Allow requests from Vite dev server and GitHub Pages
+// Allow requests from Vite dev server and Vercel domains
 app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://localhost:4173',
+    /\.vercel\.app$/,
     /\.github\.io$/,
   ],
 }));
